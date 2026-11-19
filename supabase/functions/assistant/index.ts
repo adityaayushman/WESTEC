@@ -1,5 +1,5 @@
-// Edge Function: plant assistant. Signed-in customers ask about a fault; the answer is grounded in that plant's own readings and alerts.
-// Secrets: ANTHROPIC_API_KEY. Deploy: supabase functions deploy assistant   (verify_jwt stays ON, so only signed-in users can call it)
+// Plant assistant. Signed-in customers ask about a fault; the answer is grounded in that plant's own readings and alerts.
+// Secrets: ANTHROPIC_API_KEY. verify_jwt stays ON, so only signed-in users can call it.
 import { createClient } from "npm:@supabase/supabase-js@2.45.4";
 
 const cors = { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type" };
@@ -19,6 +19,8 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
   if (req.method !== "POST") return json({ error: "POST only" }, 405);
   try {
+    const key = Deno.env.get("ANTHROPIC_API_KEY");
+    if (!key) return json({ error: "The assistant is not switched on yet. Please raise a service request." }, 503);
     const { plant_id, question } = await req.json();
     if (typeof question !== "string" || !question.trim() || question.length > 1500) return json({ error: "Ask a question of up to 1500 characters." }, 400);
 
@@ -37,7 +39,7 @@ Deno.serve(async (req) => {
     const context = JSON.stringify({ plant, latest_readings: latest, open_alerts: alerts, last_24h_hourly_average: series }, null, 1).slice(0, 12000);
     const r = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
-      headers: { "x-api-key": Deno.env.get("ANTHROPIC_API_KEY")!, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+      headers: { "x-api-key": key, "anthropic-version": "2023-06-01", "content-type": "application/json" },
       body: JSON.stringify({
         model: "claude-sonnet-5-5", max_tokens: 700, system: SYSTEM,
         messages: [{ role: "user", content: `Plant data:\n${context}\n\nOwner's question:\n${question.trim()}` }],
