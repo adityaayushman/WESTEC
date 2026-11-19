@@ -29,7 +29,7 @@ CONTENT-TODO.md            facts to confirm before launch
 ## Go live (about 30 minutes)
 1. **Supabase project.** Create one at supabase.com. In the SQL editor, run `supabase/schema.sql`.
 2. **Auth settings.** Authentication > URL configuration: set Site URL to your deployed address. Decide whether to require email confirmation.
-3. **Schedule alerts.** Database > Extensions: enable `pg_cron`, then run:
+3. **Schedule alerts.** Already done on the WESTEC project (pg_cron, every 5 minutes). On a new project: enable `pg_cron` and run the `cron.schedule` line below.
    `select cron.schedule('evaluate-alerts','*/5 * * * *','select evaluate_alerts()');`
 4. **Connect the site.** Put the project URL and anon key in `src/assets/config.js` (anon key only, never the service_role key). Run `node build.mjs`, redeploy.
 5. **Make yourself staff.** Sign up on the site, then in the SQL editor:

@@ -300,6 +300,7 @@ language sql stable security invoker set search_path = public as $$
 
 grant usage on schema public to anon, authenticated;
 grant select on plans, alert_rules to anon, authenticated;
+revoke execute on all functions in schema public from public, anon, authenticated;
 grant execute on function submit_lead(text, jsonb), ingest_readings(text, jsonb) to anon, authenticated;
 grant execute on function create_device(uuid, text), latest_readings(uuid), hourly_series(uuid, int) to authenticated;
-revoke execute on function evaluate_alerts() from public, anon, authenticated;
+grant execute on function is_staff(), is_member(uuid), is_org_admin(uuid), can_see_plant(uuid) to authenticated;
