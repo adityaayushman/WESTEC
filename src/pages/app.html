@@ -1,0 +1,158 @@
+<!-- Plant dashboard | Live readings, alerts, service requests and billing for your Wastec plants. -->
+<section><div class="wrap">
+  <div id="setup"></div>
+  <div id="app" hidden>
+    <div class="pbar">
+      <div><span class="eyebrow" id="orgline"></span><h1 style="font-size:1.8rem;margin-top:8px">Your plants</h1></div>
+      <div style="display:flex;gap:12px;align-items:end;flex-wrap:wrap">
+        <div class="field" style="min-width:240px"><label for="plant">Plant</label><select id="plant"></select></div>
+        <button class="btn alt" id="out" type="button">Sign out</button>
+      </div>
+    </div>
+    <div class="tabs" role="tablist" aria-label="Sections" id="tabs"></div>
+    <div id="view"></div>
+  </div>
+</div></section>
+
+<script data-page src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<script data-page src="assets/sb.js"></script>
+<script data-page src="assets/chart.js"></script>
+<script data-page>
+(async function(){
+  var sb = window.SB, el = sb.el, $ = function(id){ return document.getElementById(id); };
+  if (!sb.client) return sb.needSetup($("setup"));
+  var session = await sb.requireSession(); if (!session) return;
+  var db = sb.client, uid = session.user.id;
+
+  var orgs = (await db.from("organizations").select("*")).data || [];
+  var org = orgs[0];
+  var plants = (await db.from("plants").select("*").order("name")).data || [];
+  var role = ((await db.from("org_members").select("role").eq("user_id", uid).eq("org_id", org.id).maybeSingle()).data || {}).role;
+  var canAdmin = role === "owner" || role === "manager";
+  $("app").hidden = false;
+  $("orgline").textContent = org.name + " · " + org.plan + " plan";
+  $("out").addEventListener("click", sb.signOut);
+
+  var sel = $("plant"), cur = plants[0] ? plants[0].id : null, tab = "overview", hours = 24, timer = null;
+  sb.mount(sel, plants.length ? plants.map(function(p){ return el("option", { value: p.id }, p.name); }) : [el("option", null, "No plants yet")]);
+  sel.addEventListener("change", function(){ cur = sel.value; render(); });
+
+  var TABS = [["overview","Overview"],["alerts","Alerts"],["service","Service"],["billing","Billing"]].concat(canAdmin ? [["devices","Devices"]] : []);
+  function drawTabs(){
+    sb.mount($("tabs"), TABS.map(function(t){
+      return el("button", { role: "tab", type: "button", "aria-selected": t[0] === tab, onclick: function(){ tab = t[0]; drawTabs(); render(); } }, t[1]);
+    }));
+  }
+  var KIND = { gas_flow: ["Gas flow","m³/h",1], temperature: ["Temperature","°C",1], ch4: ["Methane","%",0], pressure: ["Pressure","mbar",0], h2s: ["H₂S","ppm",0], ph: ["pH","",1] };
+  var rules = {}; ((await db.from("alert_rules").select("*")).data || []).forEach(function(r){ rules[r.kind] = r; });
+  function state(kind, v){
+    var r = rules[kind]; if (!r) return "ok";
+    if ((r.alert_low != null && v < r.alert_low) || (r.alert_high != null && v > r.alert_high)) return "bad";
+    if ((r.warn_low != null && v < r.warn_low) || (r.warn_high != null && v > r.warn_high)) return "warn";
+    return "ok";
+  }
+
+  async function overview(v){
+    var kp = el("div", { class: "kpis" }), canvas = el("canvas", { role: "img", "aria-label": "Gas flow and temperature chart" });
+    var range = el("select", { id: "range", "aria-label": "Time range", onchange: function(e){ hours = +e.target.value; paint(); } },
+      [[24,"Last 24 hours"],[72,"Last 3 days"],[168,"Last 7 days"]].map(function(o){ return el("option", { value: o[0], selected: o[0] === hours }, o[1]); }));
+    var ask = askBox();
+    sb.mount(v, [kp, el("div", { class: "panel" }, el("div", { style: "display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:center" }, el("h3", null, "Trend"), range),
+      el("div", { class: "legend" }, el("span", null, el("i", { style: "background:var(--flame)" }), "Gas flow (m³/h, left)"), el("span", null, el("i", { style: "background:var(--warn)" }), "Temperature (°C, right)")), canvas), ask]);
+    async function paint(){
+      var l = (await db.rpc("latest_readings", { p_plant: cur })).data || [];
+      var stale = l.length && (Date.now() - Math.max.apply(null, l.map(function(x){ return new Date(x.ts); }))) > 30 * 60e3;
+      sb.mount(kp, l.length ? l.map(function(x){ var k = KIND[x.kind] || [x.kind, "", 1];
+        return el("div", { class: "kpi" }, el("small", null, k[0]), el("b", null, sb.fmt(x.value, k[2])), " ", el("small", { style: "display:inline" }, k[1]), el("br"), sb.pill(state(x.kind, x.value), state(x.kind, x.value) === "ok" ? "normal" : state(x.kind, x.value) === "warn" ? "watch" : "alert")); })
+        : [el("div", { class: "notice" }, "No readings yet. Once the gateway is installed and online, live values appear here.")]);
+      if (stale) kp.appendChild(el("div", { class: "kpi" }, el("small", null, "Gateway"), sb.pill("warn", "no data > 30 min")));
+      var s = (await db.rpc("hourly_series", { p_plant: cur, p_hours: hours })).data || [];
+      var pick = function(k){ return s.filter(function(r){ return r.kind === k; }).map(function(r){ return { t: new Date(r.hour), v: +r.avg_value }; }); };
+      WastecChart.draw(canvas, [{ values: pick("temperature"), color: "--warn", axis: "right" }, { values: pick("gas_flow"), color: "--flame", axis: "left" }], hours);
+    }
+    await paint();
+    clearInterval(timer); timer = setInterval(function(){ if (tab === "overview") paint(); }, 60000);
+  }
+
+  function askBox(){
+    var q = el("textarea", { id: "q", placeholder: "e.g. Gas dropped yesterday and the flame is weak. What should I check?", maxlength: 1500 });
+    var out = el("div", { class: "notice", hidden: true, role: "status", style: "white-space:pre-wrap" }), btn;
+    btn = el("button", { class: "btn", type: "button", onclick: async function(){
+      if (!q.value.trim()) return;
+      btn.disabled = true; sb.say(out, "", "Thinking…");
+      var r = await db.functions.invoke("assistant", { body: { plant_id: cur, question: q.value } });
+      btn.disabled = false;
+      if (r.error || !r.data || r.data.error) return sb.say(out, "bad", (r.data && r.data.error) || "The assistant is not available. Please raise a service request.");
+      sb.say(out, "", r.data.answer);
+    } }, "Ask");
+    return el("div", { class: "panel" }, el("h3", null, "Ask about your plant"),
+      el("p", { class: "muted", style: "margin-bottom:12px" }, "Answers use your plant's own readings. It is guidance, not a diagnosis. For gas leaks or smells, ventilate and call us."),
+      el("div", { class: "field" }, el("label", { for: "q" }, "Your question"), q), el("div", { style: "margin:12px 0" }, btn), out);
+  }
+
+  async function alerts(v){
+    var rows = (await db.from("alerts").select("*").eq("plant_id", cur).order("raised_at", { ascending: false }).limit(100)).data || [];
+    sb.mount(v, [el("div", { class: "panel" }, el("h3", null, "Alerts"), sb.table(["Raised", "What", "Level", "Suggested action", "Status"],
+      rows.map(function(a){ return [sb.when(a.raised_at), a.message, sb.pill(a.level === "alert" ? "bad" : "warn", a.level), a.suggested_action || "", a.resolved_at ? "Resolved " + sb.when(a.resolved_at) : sb.pill("warn", "open")]; }), "No alerts for this plant."))]);
+  }
+
+  async function service(v, sent){
+    var rows = (await db.from("tickets").select("*").order("created_at", { ascending: false }).limit(50)).data || [];
+    var sym = el("select", { id: "sym" }, ["Less gas than usual","Flame weak or going out","Smell","Foam or crust","Mixer or pump not working","Gas leak suspected","Something else"].map(function(s){ return el("option", null, s); }));
+    var det = el("textarea", { id: "det" }), note = el("div", { class: "notice", hidden: true, role: "status" });
+    if (sent) sb.say(note, "ok", "Request sent. We will contact you.");
+    var send = el("button", { class: "btn", type: "button", onclick: async function(){
+      send.disabled = true;
+      var r = await db.from("tickets").insert({ org_id: org.id, plant_id: cur, raised_by: uid, symptom: sym.value, details: det.value.trim() || null });
+      send.disabled = false;
+      if (r.error) return sb.say(note, "bad", "Could not send the request. Try again or call us.");
+      det.value = ""; service(v, true);
+    } }, "Send request");
+    sb.mount(v, [el("div", { class: "panel" }, el("h3", null, "Report a problem"),
+      el("p", { class: "hint", style: "margin-bottom:12px" }, "Suspected gas leak: put out flames, ventilate, leave the area and call us now."),
+      el("div", { class: "field" }, el("label", { for: "sym" }, "What is happening?"), sym), el("div", { class: "field", style: "margin-top:12px" }, el("label", { for: "det" }, "Details"), det),
+      el("div", { style: "margin:12px 0" }, send), note),
+      el("div", { class: "panel" }, el("h3", null, "Your requests"), sb.table(["Opened", "Issue", "Status"], rows.map(function(t){ return [sb.when(t.created_at), t.symptom, sb.pill(t.status === "closed" ? "ok" : "warn", t.status.replace("_", " "))]; }), "No requests yet."))]);
+  }
+
+  async function billing(v){
+    var [plansR, invR, amcR, subR] = await Promise.all([db.from("plans").select("*"), db.from("invoices").select("*").order("issued_on", { ascending: false }),
+      db.from("amc_contracts").select("*, plants(name)"), db.from("subscriptions").select("*").order("created_at", { ascending: false }).limit(1)]);
+    var note = el("div", { class: "notice", hidden: true, role: "status" });
+    var subscribe = function(code){ return el("button", { class: "btn" + (org.plan === code ? " alt" : ""), type: "button", disabled: !canAdmin || role !== "owner", onclick: async function(){
+      var r = await db.functions.invoke("billing", { body: { action: "subscribe", org_id: org.id, plan: code } });
+      if (r.error || !r.data || !r.data.url) return sb.say(note, "bad", (r.data && r.data.error) || "Online payment is not set up yet. Please contact us to subscribe.");
+      location.href = r.data.url;
+    } }, org.plan === code ? "Current plan" : "Choose " + code); };
+    sb.mount(v, [el("div", { class: "panel" }, el("h3", null, "Plan"),
+      el("p", null, "You are on the ", el("b", null, org.plan), " plan (", org.plan_status, "). ", subR.data && subR.data[0] && subR.data[0].current_period_end ? "Renews " + new Date(subR.data[0].current_period_end).toLocaleDateString("en-IN") + "." : ""),
+      el("div", { class: "grid", style: "margin-top:16px" }, (plansR.data || []).filter(function(p){ return p.code !== "enterprise"; }).map(function(p){
+        return el("div", { class: "card" }, el("h3", null, p.name), el("p", null, "₹" + sb.fmt(p.price_inr_per_plant_month) + " per plant / month, billed for " + Math.max(plants.length, 1) + " plant" + (plants.length > 1 ? "s" : "")), subscribe(p.code)); })),
+      role !== "owner" ? el("p", { class: "hint", style: "margin-top:12px" }, "Only the account owner can change the plan.") : null, note),
+      el("div", { class: "panel" }, el("h3", null, "Maintenance contracts"), sb.table(["Plant", "Plan", "Visits / year", "Valid"], (amcR.data || []).map(function(a){ return [a.plants ? a.plants.name : "", a.plan, a.visits_per_year, a.starts_on + " to " + a.ends_on]; }), "No contract on record. Ask us about an AMC.")),
+      el("div", { class: "panel" }, el("h3", null, "Invoices"), sb.table(["No.", "Date", "Amount", "Status"], (invR.data || []).map(function(i){ return [i.number, i.issued_on, "₹" + sb.fmt(i.amount_inr), sb.pill(i.status === "paid" ? "ok" : "warn", i.status)]; }), "No invoices yet."))]);
+  }
+
+  async function devices(v, newKey){
+    var rows = plants.length ? ((await db.from("devices").select("*").eq("plant_id", cur)).data || []) : [];
+    var out = el("div", { class: "notice", hidden: true, role: "status", style: "word-break:break-all" });
+    var mk = el("button", { class: "btn", type: "button", disabled: !plants.length, onclick: async function(){
+      var r = await db.rpc("create_device", { p_plant: cur, p_name: "Gateway" });
+      if (r.error) return sb.say(out, "bad", "Could not create a device key.");
+      devices(v, r.data);
+    } }, "Create device key");
+    if (newKey) { out.hidden = false; sb.mount(out, [el("strong", null, "Copy this key now. It is shown once."), el("br"), el("code", { class: "mono" }, newKey),
+      el("p", { class: "hint" }, "Your installer enters it in the gateway. Wastec installs and configures it for you.")]); }
+    sb.mount(v, [el("div", { class: "panel" }, el("h3", null, "Gateways at this plant"), sb.table(["Name", "Created", "Last data"], rows.map(function(d){ return [d.name, sb.when(d.created_at), sb.when(d.last_seen)]; }), "No gateway registered."), el("div", { style: "margin-top:16px" }, mk), out)]);
+  }
+
+  var views = { overview: overview, alerts: alerts, service: service, billing: billing, devices: devices };
+  async function render(){
+    clearInterval(timer); var v = $("view");
+    if (!cur && (tab === "overview" || tab === "alerts" || tab === "devices")) return sb.mount(v, [el("div", { class: "notice" }, "No plants are set up on your account yet. After a site visit, Wastec adds your plant here. ", el("a", { href: "contact.html" }, "Request a quote"), ".")]);
+    await views[tab](v);
+  }
+  window.addEventListener("resize", function(){ if (tab === "overview") render(); });
+  drawTabs(); render();
+})();
+</script>

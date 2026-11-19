@@ -64,8 +64,13 @@
         if (btn) btn.disabled = false;
       }
 
-      if (!C.formEndpoint) { showFallback("Online sending is not switched on yet."); return; }
-      fetch(C.formEndpoint, { method: "POST", headers: { "Content-Type": "application/json", "Accept": "application/json" }, body: JSON.stringify(data) })
+      var useDb = !!(C.supabaseUrl && C.supabaseAnonKey);
+      if (!useDb && !C.formEndpoint) { showFallback("Online sending is not switched on yet."); return; }
+      var url = useDb ? C.supabaseUrl + "/rest/v1/rpc/submit_lead" : C.formEndpoint;
+      var hdr = { "Content-Type": "application/json", "Accept": "application/json" };
+      var body = JSON.stringify(data);
+      if (useDb) { hdr.apikey = C.supabaseAnonKey; hdr.Authorization = "Bearer " + C.supabaseAnonKey; body = JSON.stringify({ p_kind: data.type, p_payload: data }); }
+      fetch(url, { method: "POST", headers: hdr, body: body })
         .then(function(r){ if (!r.ok) throw new Error(r.status);
           out.className = "notice ok result"; out.hidden = false;
           out.textContent = "Thanks. We have your request and will reply within one working day.";

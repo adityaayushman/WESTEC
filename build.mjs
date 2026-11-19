@@ -12,7 +12,7 @@ fs.cpSync(path.join(src, "assets"), path.join(dist, "assets"), { recursive: true
 
 const NAV = [
   ["products", "Products"], ["services", "Services"], ["calculator", "Biogas calculator"],
-  ["about", "About"], ["portal", "Customer portal"],
+  ["pricing", "Pricing"], ["about", "About"], ["portal", "Live demo"],
 ];
 
 const layout = ({ title, desc, key, body }) => `<!doctype html>
@@ -40,6 +40,7 @@ const layout = ({ title, desc, key, body }) => `<!doctype html>
   <button class="icon-btn menu-btn" id="menu-btn" aria-expanded="false" aria-controls="nav">Menu</button>
   <nav class="nav" id="nav" aria-label="Main">
     ${NAV.map(([k, l]) => `<a href="${k}.html"${k === key ? ' aria-current="page"' : ""}>${l}</a>`).join("\n    ")}
+    <a href="login.html">Sign in</a>
     <a class="btn sm" href="contact.html">Get a quote</a>
     <button class="icon-btn" id="theme-btn" type="button" aria-label="Switch light and dark theme">Theme</button>
   </nav>
@@ -56,7 +57,7 @@ ${body}
   <div><h3>Company</h3>
     <a href="products.html">Products</a><a href="services.html">Services</a><a href="calculator.html">Biogas calculator</a><a href="about.html">About</a></div>
   <div><h3>Contact</h3>
-    <a href="contact.html">Request a quote</a><a href="contact.html#service">Report a fault</a><a href="portal.html">Customer portal</a>
+    <a href="contact.html">Request a quote</a><a href="contact.html#service">Report a fault</a><a href="pricing.html">Pricing</a><a href="login.html">Customer sign in</a><a href="portal.html">Live demo</a>
     <a data-email href="#"></a><a data-phone href="#"></a></div>
 </div></footer>
 <script src="assets/config.js"></script>
@@ -73,7 +74,7 @@ for (const f of pages) {
   if (!m) throw new Error(f + ": missing <!-- title | description --> header");
   const key = f.replace(".html", "");
   raw = raw.slice(m[0].length);
-  const scripts = raw.match(/<script data-page>[\s\S]*?<\/script>/g) || [];
+  const scripts = raw.match(/<script data-page(?:\s[^>]*)?>[\s\S]*?<\/script>/g) || [];
   scripts.forEach(s => (raw = raw.replace(s, "")));
   let html = layout({ title: m[1], desc: m[2], key, body: raw });
   html = html.replace("</body>", scripts.map(s => s.replace(" data-page", "")).join("\n") + "\n</body>");

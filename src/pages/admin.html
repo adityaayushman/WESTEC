@@ -1,0 +1,106 @@
+<!-- Staff console | Wastec staff console for leads, customers, plants, tickets and billing. -->
+<section><div class="wrap">
+  <div id="setup"></div>
+  <div id="app" hidden>
+    <div class="pbar"><div><span class="eyebrow">Wastec staff</span><h1 style="font-size:1.8rem;margin-top:8px">Console</h1></div>
+      <button class="btn alt" id="out" type="button">Sign out</button></div>
+    <div class="tabs" role="tablist" id="tabs" aria-label="Sections"></div>
+    <div id="view"></div>
+  </div>
+</div></section>
+
+<script data-page src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<script data-page src="assets/sb.js"></script>
+<script data-page>
+(async function(){
+  var sb = window.SB, el = sb.el, $ = function(id){ return document.getElementById(id); };
+  if (!sb.client) return sb.needSetup($("setup"));
+  if (!(await sb.requireSession())) return;
+  if (!(await sb.isStaff())) { sb.mount($("setup"), [el("div", { class: "notice bad" }, "This area is for Wastec staff. ", el("a", { href: "app.html" }, "Go to your dashboard"), ".")]); return; }
+  var db = sb.client; $("app").hidden = false; $("out").addEventListener("click", sb.signOut);
+  var tab = "leads";
+  var TABS = [["leads","Leads"],["customers","Customers"],["tickets","Tickets"],["alerts","Open alerts"],["billing","Billing"]];
+  function drawTabs(){ sb.mount($("tabs"), TABS.map(function(t){ return el("button", { role: "tab", type: "button", "aria-selected": t[0] === tab, onclick: function(){ tab = t[0]; drawTabs(); render(); } }, t[1]); })); }
+  function select(opts, val, onchange){ return el("select", { onchange: function(e){ onchange(e.target.value); }, style: "min-height:34px;padding:4px 8px" }, opts.map(function(o){ return el("option", { value: o, selected: o === val }, o); })); }
+  function note(){ return el("div", { class: "notice", hidden: true, role: "status", style: "margin-top:12px" }); }
+
+  async function leads(v){
+    var rows = (await db.from("leads").select("*").order("created_at", { ascending: false }).limit(200)).data || [];
+    sb.mount(v, [el("div", { class: "panel" }, el("h3", null, "Enquiries"), sb.table(["Received", "Type", "Who", "Details", "Status"], rows.map(function(l){
+      var p = l.payload || {};
+      return [sb.when(l.created_at), l.kind, (p.name || "") + (p.phone ? " · " + p.phone : "") + (p.email ? " · " + p.email : ""),
+        [p.location, p.organisation, p.waste, p.waste_kg_per_day && p.waste_kg_per_day + " kg/day", p.gas_use, p.symptom, p.message].filter(Boolean).join(" · "),
+        select(["new","contacted","won","lost"], l.status, async function(s){ await db.from("leads").update({ status: s }).eq("id", l.id); })];
+    }), "No enquiries yet."))]);
+  }
+
+  async function customers(v){
+    var orgs = (await db.from("organizations").select("*").order("created_at", { ascending: false })).data || [];
+    var plants = (await db.from("plants").select("*")).data || [];
+    var n = note(), orgSel = el("select", { id: "po" }, orgs.map(function(o){ return el("option", { value: o.id }, o.name); }));
+    var f = { name: el("input", { id: "pn", placeholder: "Plant name" }), loc: el("input", { id: "pl", placeholder: "Location" }), feed: el("input", { id: "pf", placeholder: "Feedstock" }), vol: el("input", { id: "pv", type: "number", min: "1", placeholder: "Digester m³" }) };
+    var add = el("button", { class: "btn", type: "button", onclick: async function(){
+      if (!f.name.value.trim() || !orgSel.value) return sb.say(n, "bad", "Choose an organisation and name the plant.");
+      var r = await db.from("plants").insert({ org_id: orgSel.value, name: f.name.value.trim(), location: f.loc.value.trim() || null, feedstock: f.feed.value.trim() || null, digester_m3: f.vol.value ? +f.vol.value : null });
+      if (r.error) return sb.say(n, "bad", "Could not add the plant."); customers(v);
+    } }, "Add plant");
+    var keyOut = note();
+    sb.mount(v, [el("div", { class: "panel" }, el("h3", null, "Organisations"), sb.table(["Name", "Plan", "Status", "Plants", "Joined"], orgs.map(function(o){
+      return [o.name, o.plan, sb.pill(o.plan_status === "active" ? "ok" : "warn", o.plan_status), plants.filter(function(p){ return p.org_id === o.id; }).length, sb.when(o.created_at)]; }), "No customers yet.")),
+      el("div", { class: "panel" }, el("h3", null, "Add a plant to an organisation"), el("div", { class: "grid" }, [el("div", { class: "field" }, el("label", { for: "po" }, "Organisation"), orgSel),
+        f.name, f.loc, f.feed, f.vol].map(function(x){ return x.tagName === "INPUT" ? el("div", { class: "field" }, x) : x; })), el("div", { style: "margin-top:12px" }, add), n),
+      el("div", { class: "panel" }, el("h3", null, "Plants and gateway keys"), sb.table(["Plant", "Organisation", "Location", "m³", "Gateway key"], plants.map(function(p){
+        var o = orgs.find(function(x){ return x.id === p.org_id; });
+        return [p.name, o ? o.name : "", p.location || "", p.digester_m3 || "", el("button", { class: "btn alt sm", type: "button", onclick: async function(){
+          var r = await db.rpc("create_device", { p_plant: p.id, p_name: "Gateway" });
+          if (r.error) return sb.say(keyOut, "bad", "Could not create a key.");
+          keyOut.hidden = false; keyOut.className = "notice"; keyOut.style.wordBreak = "break-all";
+          sb.mount(keyOut, [el("strong", null, p.name + ": copy this key now, it is shown once."), el("br"), el("code", { class: "mono" }, r.data)]);
+        } }, "New key")]; }), "No plants yet."), keyOut)]);
+  }
+
+  async function tickets(v){
+    var rows = (await db.from("tickets").select("*, organizations(name), plants(name)").order("created_at", { ascending: false }).limit(200)).data || [];
+    sb.mount(v, [el("div", { class: "panel" }, el("h3", null, "Service tickets"), sb.table(["Opened", "Customer", "Plant", "Issue", "Details", "Status"], rows.map(function(t){
+      return [sb.when(t.created_at), t.organizations ? t.organizations.name : "", t.plants ? t.plants.name : "", t.symptom, t.details || "",
+        select(["open","in_progress","closed"], t.status, async function(s){ await db.from("tickets").update({ status: s, closed_at: s === "closed" ? new Date().toISOString() : null }).eq("id", t.id); })]; }), "No tickets."))]);
+  }
+
+  async function alerts(v){
+    var rows = (await db.from("alerts").select("*, plants(name, organizations(name))").is("resolved_at", null).order("raised_at", { ascending: false })).data || [];
+    sb.mount(v, [el("div", { class: "panel" }, el("h3", null, "Open alerts across all plants"), sb.table(["Raised", "Customer", "Plant", "What", "Level", "Action"], rows.map(function(a){
+      return [sb.when(a.raised_at), a.plants && a.plants.organizations ? a.plants.organizations.name : "", a.plants ? a.plants.name : "", a.message, sb.pill(a.level === "alert" ? "bad" : "warn", a.level), a.suggested_action || ""]; }), "No open alerts."))]);
+  }
+
+  async function billing(v){
+    var orgs = (await db.from("organizations").select("id,name")).data || [], plants = (await db.from("plants").select("id,name,org_id")).data || [];
+    var inv = (await db.from("invoices").select("*, organizations(name)").order("issued_on", { ascending: false }).limit(100)).data || [];
+    var amc = (await db.from("amc_contracts").select("*, plants(name)")).data || [];
+    var n1 = note(), n2 = note();
+    var io = el("select", { id: "io" }, orgs.map(function(o){ return el("option", { value: o.id }, o.name); }));
+    var ino = el("input", { id: "ino", placeholder: "Invoice no. e.g. INV-0001" }), ia = el("input", { id: "ia", type: "number", min: "0", step: "0.01", placeholder: "Amount (₹)" });
+    var addInv = el("button", { class: "btn", type: "button", onclick: async function(){
+      if (!ino.value.trim() || ia.value === "") return sb.say(n1, "bad", "Enter an invoice number and amount.");
+      var r = await db.from("invoices").insert({ org_id: io.value, number: ino.value.trim(), amount_inr: +ia.value });
+      if (r.error) return sb.say(n1, "bad", "Could not save. Is the invoice number already used?"); billing(v);
+    } }, "Add invoice");
+    var ap = el("select", { id: "ap" }, plants.map(function(p){ return el("option", { value: p.id }, p.name); }));
+    var ac = { plan: el("input", { id: "acp", placeholder: "Plan name" }), visits: el("input", { id: "acv", type: "number", min: "1", placeholder: "Visits / year" }), from: el("input", { id: "acf", type: "date" }), to: el("input", { id: "act", type: "date" }) };
+    var addAmc = el("button", { class: "btn", type: "button", onclick: async function(){
+      if (!ac.plan.value.trim() || !ac.visits.value || !ac.from.value || !ac.to.value) return sb.say(n2, "bad", "Fill in all contract fields.");
+      var r = await db.from("amc_contracts").insert({ plant_id: ap.value, plan: ac.plan.value.trim(), visits_per_year: +ac.visits.value, starts_on: ac.from.value, ends_on: ac.to.value });
+      if (r.error) return sb.say(n2, "bad", "Could not save. The end date must be after the start."); billing(v);
+    } }, "Add contract");
+    var fld = function(label, node, id){ return el("div", { class: "field" }, el("label", { for: id }, label), node); };
+    sb.mount(v, [el("div", { class: "panel" }, el("h3", null, "Invoices"), sb.table(["No.", "Customer", "Date", "Amount", "Status"], inv.map(function(i){
+      return [i.number, i.organizations ? i.organizations.name : "", i.issued_on, "₹" + sb.fmt(i.amount_inr), select(["due","paid","void"], i.status, async function(s){ await db.from("invoices").update({ status: s }).eq("id", i.id); })]; }), "No invoices."),
+      el("div", { class: "grid", style: "margin-top:16px" }, [fld("Customer", io, "io"), fld("Number", ino, "ino"), fld("Amount", ia, "ia")]), el("div", { style: "margin-top:12px" }, addInv), n1),
+      el("div", { class: "panel" }, el("h3", null, "Maintenance contracts"), sb.table(["Plant", "Plan", "Visits", "From", "To"], amc.map(function(a){ return [a.plants ? a.plants.name : "", a.plan, a.visits_per_year, a.starts_on, a.ends_on]; }), "No contracts."),
+        el("div", { class: "grid", style: "margin-top:16px" }, [fld("Plant", ap, "ap"), fld("Plan", ac.plan, "acp"), fld("Visits per year", ac.visits, "acv"), fld("Starts", ac.from, "acf"), fld("Ends", ac.to, "act")]), el("div", { style: "margin-top:12px" }, addAmc), n2)]);
+  }
+
+  var views = { leads: leads, customers: customers, tickets: tickets, alerts: alerts, billing: billing };
+  function render(){ return views[tab]($("view")); }
+  drawTabs(); render();
+})();
+</script>

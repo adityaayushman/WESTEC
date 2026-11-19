@@ -1,0 +1,41 @@
+<!-- Pricing | Wastec plant monitoring plans, priced per plant per month. -->
+<section><div class="wrap">
+  <div class="sec-head"><span class="eyebrow">Pricing</span><h1>Monitoring priced per plant</h1>
+    <p class="lead">Pay for each plant you monitor. The sensor kit and installation are quoted separately after a site survey. Prices exclude GST.</p></div>
+  <div class="grid" id="plans"></div>
+  <p class="fine" style="margin-top:20px">Prices shown come from the plans table in the database, so they can be changed without editing the site.</p>
+
+  <div class="sec-head" style="margin-top:56px"><span class="eyebrow">Also available</span><h2>Maintenance contracts and spares</h2>
+    <p class="lead">Annual maintenance contracts, breakdown repair and spares are priced per site. <a href="contact.html">Request a quote</a>.</p></div>
+</div></section>
+
+<script data-page src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<script data-page src="assets/sb.js"></script>
+<script data-page>
+(function(){
+  var sb = window.SB, el = sb.el, root = document.getElementById("plans");
+  // Fallback shown when the database is not connected. Keep in step with the seed in supabase/schema.sql.
+  var FALLBACK = [
+    { code: "starter", name: "Starter", price_inr_per_plant_month: 499, max_plants: 3, history_days: 30, features: ["Live dashboard","Email alerts","Service requests","30-day history"] },
+    { code: "pro", name: "Pro", price_inr_per_plant_month: 1499, max_plants: 25, history_days: 365, features: ["Everything in Starter","WhatsApp alerts","Performance reports","1-year history","AMC and invoices","Priority technician dispatch"] },
+    { code: "enterprise", name: "Enterprise", price_inr_per_plant_month: null, max_plants: null, history_days: 1825, features: ["Everything in Pro","Unlimited plants","Custom alert rules","API access","Dedicated support"] }
+  ];
+  function render(plans){
+    plans = plans.slice().sort(function(a, b){ return (a.price_inr_per_plant_month == null ? 1e9 : a.price_inr_per_plant_month) - (b.price_inr_per_plant_month == null ? 1e9 : b.price_inr_per_plant_month); });
+    sb.mount(root, plans.map(function(p){
+      var price = p.price_inr_per_plant_month == null ? el("b", { class: "mono", style: "font-size:1.6rem" }, "Contact us")
+        : el("div", null, el("b", { class: "mono", style: "font-size:2rem" }, "₹" + sb.fmt(p.price_inr_per_plant_month)), el("span", { class: "muted" }, " per plant / month"));
+      var limit = p.max_plants ? "Up to " + p.max_plants + " plants" : "Unlimited plants";
+      var feats = typeof p.features === "string" ? JSON.parse(p.features) : p.features;
+      return el("article", { class: "card" },
+        el("span", { class: "tag" }, p.name.toUpperCase()), price,
+        el("p", null, limit + " · " + (p.history_days >= 365 ? Math.round(p.history_days / 365) + "-year" : p.history_days + "-day") + " history"),
+        el("ul", null, feats.map(function(f){ return el("li", null, f); })),
+        el("a", { class: "btn" + (p.code === "pro" ? "" : " alt"), href: p.code === "enterprise" ? "contact.html" : "login.html#signup" },
+          p.code === "enterprise" ? "Talk to us" : "Start with " + p.name));
+    }));
+  }
+  render(FALLBACK);
+  if (sb.client) sb.client.from("plans").select("*").order("price_inr_per_plant_month", { nullsFirst: false }).then(function(r){ if (r.data && r.data.length) render(r.data); });
+})();
+</script>

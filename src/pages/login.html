@@ -1,0 +1,76 @@
+<!-- Sign in | Sign in or create a Wastec account to monitor your biogas plants. -->
+<section><div class="wrap" style="max-width:520px">
+  <div class="sec-head"><span class="eyebrow">Customer account</span><h1 id="ttl">Sign in</h1></div>
+  <div id="setup"></div>
+  <div class="formcard" id="box">
+    <div class="tabs" role="tablist" aria-label="Account">
+      <button role="tab" id="t-in" aria-selected="true" type="button">Sign in</button>
+      <button role="tab" id="t-up" aria-selected="false" type="button">Create account</button>
+    </div>
+    <form id="f-in" novalidate>
+      <div class="field"><label for="i-email">Email</label><input id="i-email" type="email" autocomplete="email" required></div>
+      <div class="field"><label for="i-pw">Password</label><input id="i-pw" type="password" autocomplete="current-password" required></div>
+      <button class="btn" type="submit">Sign in</button>
+      <button class="btn alt" type="button" id="reset">Email me a reset link</button>
+      <div class="msg" hidden role="status"></div>
+    </form>
+    <form id="f-up" novalidate hidden>
+      <div class="field"><label for="u-name">Your name</label><input id="u-name" autocomplete="name" required></div>
+      <div class="field"><label for="u-org">Organisation (farm, hotel, society…)</label><input id="u-org" autocomplete="organization" required></div>
+      <div class="field"><label for="u-phone">Phone</label><input id="u-phone" type="tel" autocomplete="tel"></div>
+      <div class="field"><label for="u-email">Email</label><input id="u-email" type="email" autocomplete="email" required></div>
+      <div class="field"><label for="u-pw">Password</label><input id="u-pw" type="password" autocomplete="new-password" minlength="8" required><span class="hint">At least 8 characters.</span></div>
+      <button class="btn" type="submit">Create account</button>
+      <div class="msg" hidden role="status"></div>
+    </form>
+  </div>
+  <p class="muted" style="margin-top:16px">New plants are added to your account by Wastec after a site visit. Want to see it first? <a href="portal.html">Open the demo</a>.</p>
+</div></section>
+
+<script data-page src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<script data-page src="assets/sb.js"></script>
+<script data-page>
+(function(){
+  var $ = function(id){ return document.getElementById(id); }, sb = window.SB;
+  if (!sb.client) { sb.needSetup($("setup")); $("box").hidden = true; return; }
+  sb.session().then(function(s){ if (s) location.replace("app.html"); });
+
+  function show(which){
+    var up = which === "up";
+    $("f-in").hidden = up; $("f-up").hidden = !up; $("ttl").textContent = up ? "Create your account" : "Sign in";
+    $("t-in").setAttribute("aria-selected", !up); $("t-up").setAttribute("aria-selected", up);
+  }
+  $("t-in").addEventListener("click", function(){ show("in"); });
+  $("t-up").addEventListener("click", function(){ show("up"); });
+  if (location.hash === "#signup") show("up");
+  var msg = function(form, kind, text){ sb.say(form.querySelector(".msg"), kind, text); };
+
+  $("f-in").addEventListener("submit", async function(e){
+    e.preventDefault(); var f = e.target, b = f.querySelector("button[type=submit]");
+    if (!$("i-email").value || !$("i-pw").value) return msg(f, "bad", "Enter your email and password.");
+    b.disabled = true;
+    var r = await sb.client.auth.signInWithPassword({ email: $("i-email").value.trim(), password: $("i-pw").value });
+    b.disabled = false;
+    if (r.error) return msg(f, "bad", "Email or password is not right.");
+    location.href = "app.html";
+  });
+  $("reset").addEventListener("click", async function(){
+    var f = $("f-in"), em = $("i-email").value.trim();
+    if (!em) return msg(f, "bad", "Type your email above first.");
+    var r = await sb.client.auth.resetPasswordForEmail(em, { redirectTo: location.origin + location.pathname.replace("login.html", "login.html") });
+    msg(f, r.error ? "bad" : "ok", r.error ? "Could not send the link. Try again shortly." : "If that email has an account, a reset link is on its way.");
+  });
+  $("f-up").addEventListener("submit", async function(e){
+    e.preventDefault(); var f = e.target, b = f.querySelector("button[type=submit]");
+    if (!$("u-name").value.trim() || !$("u-org").value.trim() || !$("u-email").value.trim()) return msg(f, "bad", "Fill in your name, organisation and email.");
+    if ($("u-pw").value.length < 8) return msg(f, "bad", "Use a password of at least 8 characters.");
+    b.disabled = true;
+    var r = await sb.client.auth.signUp({ email: $("u-email").value.trim(), password: $("u-pw").value,
+      options: { data: { full_name: $("u-name").value.trim(), org_name: $("u-org").value.trim(), phone: $("u-phone").value.trim() } } });
+    b.disabled = false;
+    if (r.error) return msg(f, "bad", r.error.message || "Could not create the account.");
+    if (r.data.session) location.href = "app.html";
+    else msg(f, "ok", "Account created. Check your email and click the confirmation link, then sign in.");
+  });
+})();
+</script>
