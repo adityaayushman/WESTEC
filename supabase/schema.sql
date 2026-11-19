@@ -367,3 +367,35 @@ create trigger plants_limit before insert on plants for each row execute functio
 create policy org_staff_update on organizations for update using (is_staff()) with check (is_staff());
 
 revoke execute on function enqueue_alert_emails(), enforce_plant_limit() from public, anon, authenticated;
+
+-- =====================================================================
+-- Part 3: alert e-mail delivery plumbing (applied on the WESTEC project)
+-- Needs the pg_net and pg_cron extensions. Replace the project ref in the URL below for a new project.
+-- =====================================================================
+create extension if not exists pg_net;
+create schema if not exists private;
+revoke all on schema private from public, anon, authenticated;
+create table if not exists private.fn_secrets (name text primary key, value text not null);
+insert into private.fn_secrets (name, value)
+  values ('send_alerts', replace(gen_random_uuid()::text || gen_random_uuid()::text, '-', ''))
+  on conflict (name) do nothing;
+
+create or replace function public.verify_fn_secret(p_name text, p_value text) returns boolean
+language sql stable security definer set search_path = private, public as $$
+  select exists (select 1 from private.fn_secrets where name = p_name and value = p_value) $$;
+revoke execute on function public.verify_fn_secret(text, text) from public, anon, authenticated;
+grant execute on function public.verify_fn_secret(text, text) to service_role;
+
+create or replace function public.dispatch_alert_emails() returns void
+language plpgsql security definer set search_path = private, public as $$
+declare v_secret text;
+begin
+  if not exists (select 1 from notification_outbox where status = 'pending') then return; end if;
+  select value into v_secret from private.fn_secrets where name = 'send_alerts';
+  perform net.http_post(
+    url := 'https://fausqyfyrqlxdnymayfv.supabase.co/functions/v1/send-alerts',
+    headers := jsonb_build_object('Content-Type', 'application/json', 'x-fn-secret', v_secret),
+    body := '{}'::jsonb);
+end $$;
+revoke execute on function public.dispatch_alert_emails() from public, anon, authenticated;
+-- select cron.schedule('send-alert-emails', '*/5 * * * *', 'select public.dispatch_alert_emails()');   -- already scheduled on WESTEC

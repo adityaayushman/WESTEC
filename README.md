@@ -21,7 +21,7 @@ CONTENT-TODO.md            facts to confirm before launch
 | Staff console: leads, customers, plants, tickets, fleet alerts, invoices, contracts | `admin.html` | Written. Needs a staff row (below). |
 | Ingestion | RPC `ingest_readings`, `tools/simulate-device.mjs` | Tested in the schema tests. |
 | Alert engine | SQL `evaluate_alerts()` | Tested: threshold, gas-flow drop, resolve, no duplicates. |
-| Alert emails | outbox table, `send-alerts` function, settings in the app | Queueing is tested. Sending is **not run**: needs a Resend key and a verified sender domain. |
+| Alert emails | outbox table, `send-alerts` function, cron dispatch, settings in the app | Queueing tested. Function deployed on WESTEC. Sending needs `RESEND_API_KEY` set in the dashboard; until a sender domain is verified in Resend it can only email the Resend account owner. |
 | Plan limits | database trigger | Tested. Trial = 3 plants, Starter 3, Pro 25. |
 | Legal pages | `privacy.html`, `terms.html` | **Drafts for a lawyer.** |
 | Gateway firmware | `firmware/` | Reference sketch, **never run on hardware**. |
