@@ -14,8 +14,8 @@ The site was written without access to wastecgroup.in (it returned 403), so thes
 
 ## SaaS additions
 - [ ] Plan prices in `supabase/schema.sql` (Starter ₹499, Pro ₹1,499 per plant per month) are proposals. Confirm, and change the seed and the fallback in `pricing.html` together.
-- [ ] Plan limits (3 / 25 plants) and history days are not enforced in code yet. Decide whether to enforce them.
+- [x] Plant limits are enforced in the database (trial 3, Starter 3, Pro 25). History length is not limited per plan.
 - [ ] No trial period or free tier is enforced. The `trial` plan is just the default.
 - [ ] Alert thresholds in `alert_rules` are typical mesophilic values. Have your engineer review them per feedstock.
-- [ ] "WhatsApp alerts" and "Email alerts" are listed as plan features, but notification sending is not built. Alerts show in the app and console only.
-- [ ] Privacy policy, terms of service, and a data-ownership clause in customer contracts.
+- [ ] Email alerts are queued and have a sender function, but need a Resend key, a verified domain and the cron call (see `supabase/functions/send-alerts`). "WhatsApp alerts" is listed on the Pro plan but is not built.
+- [ ] Privacy policy and terms are drafts: have a lawyer review them. Add a data-ownership clause to customer contracts.

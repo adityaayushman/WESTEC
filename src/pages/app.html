@@ -92,8 +92,24 @@
 
   async function alerts(v){
     var rows = (await db.from("alerts").select("*").eq("plant_id", cur).order("raised_at", { ascending: false }).limit(100)).data || [];
+    var pref = (await db.from("notification_prefs").select("*").eq("org_id", org.id).eq("user_id", uid).maybeSingle()).data;
+    var on = el("input", { id: "pe-on", type: "checkbox", checked: pref ? pref.email_alerts : true });
+    var mail = el("input", { id: "pe-mail", type: "email", value: pref ? pref.email : session.user.email, autocomplete: "email" });
+    var lvl = el("select", { id: "pe-lvl" }, [["warn", "Warnings and alerts"], ["alert", "Alerts only"]].map(function(o){ return el("option", { value: o[0], selected: (pref ? pref.min_level : "warn") === o[0] }, o[1]); }));
+    var note = el("div", { class: "notice", hidden: true, role: "status", style: "margin-top:12px" });
+    var save = el("button", { class: "btn", type: "button", onclick: async function(){
+      if (mail.value.indexOf("@") < 1) return sb.say(note, "bad", "Enter a valid email address.");
+      var r = await db.from("notification_prefs").upsert({ org_id: org.id, user_id: uid, email: mail.value.trim(), email_alerts: on.checked, min_level: lvl.value });
+      sb.say(note, r.error ? "bad" : "ok", r.error ? "Could not save. Try again." : "Saved. New alerts will be emailed to " + mail.value.trim() + ".");
+    } }, "Save");
     sb.mount(v, [el("div", { class: "panel" }, el("h3", null, "Alerts"), sb.table(["Raised", "What", "Level", "Suggested action", "Status"],
-      rows.map(function(a){ return [sb.when(a.raised_at), a.message, sb.pill(a.level === "alert" ? "bad" : "warn", a.level), a.suggested_action || "", a.resolved_at ? "Resolved " + sb.when(a.resolved_at) : sb.pill("warn", "open")]; }), "No alerts for this plant."))]);
+      rows.map(function(a){ return [sb.when(a.raised_at), a.message, sb.pill(a.level === "alert" ? "bad" : "warn", a.level), a.suggested_action || "", a.resolved_at ? "Resolved " + sb.when(a.resolved_at) : sb.pill("warn", "open")]; }), "No alerts for this plant.")),
+      el("div", { class: "panel" }, el("h3", null, "Email alerts"),
+        el("p", { class: "muted", style: "margin-bottom:12px" }, "Get an email when a plant raises a new alert. Applies to every plant in your organisation."),
+        el("div", { class: "field" }, el("label", { for: "pe-mail" }, "Send to"), mail),
+        el("div", { class: "field", style: "margin-top:12px" }, el("label", { for: "pe-lvl" }, "Send for"), lvl),
+        el("label", { style: "display:flex;gap:8px;align-items:center;margin:12px 0;font-weight:400" }, on, "Email me alerts"),
+        save, note)]);
   }
 
   async function service(v, sent){

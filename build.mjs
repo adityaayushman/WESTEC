@@ -57,7 +57,7 @@ ${body}
   <div><h3>Company</h3>
     <a href="products.html">Products</a><a href="services.html">Services</a><a href="calculator.html">Biogas calculator</a><a href="about.html">About</a></div>
   <div><h3>Contact</h3>
-    <a href="contact.html">Request a quote</a><a href="contact.html#service">Report a fault</a><a href="pricing.html">Pricing</a><a href="login.html">Customer sign in</a><a href="portal.html">Live demo</a>
+    <a href="contact.html">Request a quote</a><a href="contact.html#service">Report a fault</a><a href="pricing.html">Pricing</a><a href="login.html">Customer sign in</a><a href="portal.html">Live demo</a><a href="privacy.html">Privacy policy</a><a href="terms.html">Terms of service</a>
     <a data-email href="#"></a><a data-phone href="#"></a></div>
 </div></footer>
 <script src="assets/config.js"></script>

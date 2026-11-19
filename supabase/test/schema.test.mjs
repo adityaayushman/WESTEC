@@ -106,5 +106,36 @@ ok(blocked, "anonymous users cannot read leads");
 await as(S.id);
 ok((await q("select count(*)::int c from leads"))[0].c === 1, "staff can read leads");
 
+
+// ---- part 2: alert e-mails and plan limits ----
+await su();
+await db.exec("grant select, insert, update, delete on notification_prefs to authenticated; grant select on notification_outbox to authenticated;");
+await as(A.id);
+await q("insert into notification_prefs(org_id,user_id,email,min_level) values ($1,$2,'a@example.com','warn')", [orgA, A.id]);
+blocked = false; try { await q("insert into notification_prefs(org_id,user_id,email) values ($1,$2,'x@example.com')", [orgB, A.id]); } catch { blocked = true; }
+ok(blocked, "customer cannot set alert preferences for another organization");
+await su();
+await q("delete from alerts");
+await q("insert into readings(plant_id,kind,value,ts) values ($1,'temperature',41,now() + interval '2 seconds')", [pa.id]);
+await q("select evaluate_alerts()");
+const T = "subject like '%Digester temperature%'";
+let ob = await q(`select to_email, subject from notification_outbox where ${T}`);
+ok(ob.length === 1 && ob[0].to_email === "a@example.com" && ob[0].subject.startsWith("[WARN]"), "a new warn alert queues one e-mail for the subscribed member: " + (ob[0]?.subject ?? ""));
+await q("select evaluate_alerts()");
+ok((await q(`select count(*)::int c from notification_outbox where ${T}`))[0].c === 1, "re-evaluating does not queue a duplicate e-mail");
+await q("insert into readings(plant_id,kind,value,ts) values ($1,'temperature',45,now() + interval '3 seconds')", [pa.id]);
+await q("select evaluate_alerts()");
+ok((await q(`select count(*)::int c from notification_outbox where ${T}`))[0].c === 2, "escalation from warn to alert queues a second e-mail");
+await as(B.id);
+ok((await q("select count(*)::int c from notification_outbox"))[0].c === 0, "non-staff cannot read the outbox");
+await su();
+await q("update organizations set plan='starter' where id=$1", [orgA]);
+await q("insert into plants(org_id,name) values ($1,'P2'),($1,'P3')", [orgA]);           // now 3 plants on a 3-plant plan
+blocked = false; try { await q("insert into plants(org_id,name) values ($1,'P4')", [orgA]); } catch (e) { blocked = /limit reached/.test(e.message); }
+ok(blocked, "the 4th plant on a 3-plant plan is refused with a clear message");
+await q("update organizations set plan='pro' where id=$1", [orgA]);
+await q("insert into plants(org_id,name) values ($1,'P4')", [orgA]);
+ok(true, "upgrading the plan allows more plants");
+
 console.log(fails ? `\n${fails} FAILED` : "\nAll checks passed");
 process.exit(fails ? 1 : 0);

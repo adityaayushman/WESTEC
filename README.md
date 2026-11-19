@@ -21,6 +21,10 @@ CONTENT-TODO.md            facts to confirm before launch
 | Staff console: leads, customers, plants, tickets, fleet alerts, invoices, contracts | `admin.html` | Written. Needs a staff row (below). |
 | Ingestion | RPC `ingest_readings`, `tools/simulate-device.mjs` | Tested in the schema tests. |
 | Alert engine | SQL `evaluate_alerts()` | Tested: threshold, gas-flow drop, resolve, no duplicates. |
+| Alert emails | outbox table, `send-alerts` function, settings in the app | Queueing is tested. Sending is **not run**: needs a Resend key and a verified sender domain. |
+| Plan limits | database trigger | Tested. Trial = 3 plants, Starter 3, Pro 25. |
+| Legal pages | `privacy.html`, `terms.html` | **Drafts for a lawyer.** |
+| Gateway firmware | `firmware/` | Reference sketch, **never run on hardware**. |
 | Pricing page | `pricing.html` | Reads the `plans` table. Prices are PROPOSED. |
 | AI assistant | Edge Function `assistant` | Written, **not run**. Needs `ANTHROPIC_API_KEY`. |
 | Subscriptions | Edge Function `billing` | Written, **not run**. Needs Razorpay account, plan ids and webhook. |

@@ -304,3 +304,66 @@ revoke execute on all functions in schema public from public, anon, authenticate
 grant execute on function submit_lead(text, jsonb), ingest_readings(text, jsonb) to anon, authenticated;
 grant execute on function create_device(uuid, text), latest_readings(uuid), hourly_series(uuid, int) to authenticated;
 grant execute on function is_staff(), is_member(uuid), is_org_admin(uuid), can_see_plant(uuid) to authenticated;
+
+-- =====================================================================
+-- Part 2: alert e-mail outbox, per-user alert preferences, plan limits
+-- =====================================================================
+create table notification_prefs (
+  org_id uuid not null references organizations on delete cascade,
+  user_id uuid not null references auth.users on delete cascade,
+  email text not null check (position('@' in email) > 1),
+  email_alerts boolean not null default true,
+  min_level text not null default 'warn' check (min_level in ('warn','alert')),
+  primary key (org_id, user_id)
+);
+create table notification_outbox (
+  id uuid primary key default gen_random_uuid(),
+  alert_id uuid references alerts on delete cascade,
+  to_email text not null, subject text not null, body text not null,
+  status text not null default 'pending' check (status in ('pending','sent','failed')),
+  attempts int not null default 0, error text,
+  created_at timestamptz not null default now(), sent_at timestamptz
+);
+create index on notification_outbox (status, created_at);
+alter table notification_prefs enable row level security;
+alter table notification_outbox enable row level security;
+create policy prefs_own on notification_prefs for all
+  using (user_id = auth.uid() and is_member(org_id)) with check (user_id = auth.uid() and is_member(org_id));
+create policy outbox_staff on notification_outbox for select using (is_staff());   -- only the service role writes
+
+-- Queue one e-mail per interested member when an alert opens or is raised from warn to alert.
+create function enqueue_alert_emails() returns trigger language plpgsql security definer set search_path = public as $$
+declare v_plant plants%rowtype; r record; v_site text := coalesce(current_setting('app.site_url', true), 'https://westec-phi.vercel.app');
+begin
+  if tg_op = 'UPDATE' and not (old.level = 'warn' and new.level = 'alert') then return new; end if;
+  select * into v_plant from plants where id = new.plant_id;
+  for r in select np.email from notification_prefs np join org_members m on m.org_id = np.org_id and m.user_id = np.user_id
+           where np.org_id = v_plant.org_id and np.email_alerts and (np.min_level = 'warn' or new.level = 'alert')
+  loop
+    insert into notification_outbox (alert_id, to_email, subject, body) values (new.id, r.email,
+      '[' || upper(new.level) || '] ' || v_plant.name || ': ' || new.message,
+      'Plant: ' || v_plant.name || E'\nLevel: ' || new.level || E'\nWhat: ' || new.message ||
+      E'\nSuggested action: ' || coalesce(new.suggested_action, 'Contact Wastec.') ||
+      E'\n\nOpen your dashboard: ' || v_site || '/app' ||
+      E'\n\nIf you smell gas, put out flames, ventilate, keep away from switches, leave the area and call Wastec or emergency services.');
+  end loop;
+  return new;
+end $$;
+create trigger alerts_enqueue_emails after insert or update of level on alerts for each row execute function enqueue_alert_emails();
+
+-- Plan limits: trial = 3 plants, other plans use plans.max_plants (null = unlimited).
+create function enforce_plant_limit() returns trigger language plpgsql security definer set search_path = public as $$
+declare v_plan text; v_max int; v_count int;
+begin
+  select plan into v_plan from organizations where id = new.org_id;
+  v_max := case when v_plan = 'trial' then 3 else (select max_plants from plans where code = v_plan) end;
+  if v_max is not null then
+    select count(*) into v_count from plants where org_id = new.org_id;
+    if v_count >= v_max then raise exception 'Plant limit reached for the % plan (% plants). Change the organisation''s plan first.', v_plan, v_max; end if;
+  end if;
+  return new;
+end $$;
+create trigger plants_limit before insert on plants for each row execute function enforce_plant_limit();
+create policy org_staff_update on organizations for update using (is_staff()) with check (is_staff());
+
+revoke execute on function enqueue_alert_emails(), enforce_plant_limit() from public, anon, authenticated;
