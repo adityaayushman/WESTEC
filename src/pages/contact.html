@@ -1,0 +1,59 @@
+<!-- Contact and quote | Wastec -->
+<section><div class="wrap">
+  <div class="sec-head"><span class="eyebrow">Contact</span><h1>Request a quote or report a fault</h1>
+    <p class="lead">We reply within one working day. For a gas smell, ventilate, put out flames and call us directly.</p></div>
+
+  <div class="grid two" style="align-items:start">
+    <div class="formcard" id="quote">
+      <h2 style="font-size:1.35rem;margin-bottom:16px">New plant or equipment quote</h2>
+      <form data-lead="quote" novalidate>
+        <div class="field cols">
+          <div class="field"><label for="q-name">Name</label><input id="q-name" name="name" autocomplete="name" required></div>
+          <div class="field"><label for="q-phone">Phone or WhatsApp</label><input id="q-phone" name="phone" type="tel" autocomplete="tel" required></div>
+        </div>
+        <div class="field"><label for="q-email">Email <span class="muted">(optional)</span></label><input id="q-email" name="email" type="email" autocomplete="email"></div>
+        <div class="field cols">
+          <div class="field"><label for="q-org">Organisation type</label>
+            <select id="q-org" name="organisation"><option>Dairy or cattle farm</option><option>Poultry or pig farm</option><option>Hotel or restaurant</option><option>Institution or hostel</option><option>Food processing</option><option>Housing society</option><option>Municipality</option><option>Other</option></select></div>
+          <div class="field"><label for="q-loc">Town and state</label><input id="q-loc" name="location" required></div>
+        </div>
+        <div class="field cols">
+          <div class="field"><label for="q-waste">Main waste</label>
+            <select id="q-waste" name="waste"><option>Cattle dung</option><option>Poultry litter</option><option>Pig manure</option><option>Kitchen or food waste</option><option>Vegetable or fruit waste</option><option>Mixed</option></select></div>
+          <div class="field"><label for="q-qty">Waste per day (kg)</label><input id="q-qty" name="waste_kg_per_day" type="number" min="0" inputmode="numeric"></div>
+        </div>
+        <div class="field"><label for="q-use">Gas use</label>
+          <select id="q-use" name="gas_use"><option>Cooking or heating</option><option>Electricity</option><option>Boiler or dryer</option><option>Bottling or bio-CNG</option><option>Not sure yet</option></select></div>
+        <div class="field"><label for="q-msg">Anything else</label><textarea id="q-msg" name="message"></textarea></div>
+        <div class="hp" aria-hidden="true"><label>Leave empty<input name="company_website" tabindex="-1" autocomplete="off"></label></div>
+        <button class="btn" type="submit">Send quote request</button>
+        <div class="result" hidden role="status"></div>
+      </form>
+    </div>
+
+    <div class="formcard" id="service">
+      <h2 style="font-size:1.35rem;margin-bottom:16px">Report a plant fault</h2>
+      <form data-lead="service" novalidate>
+        <div class="field cols">
+          <div class="field"><label for="s-name">Name</label><input id="s-name" name="name" autocomplete="name" required></div>
+          <div class="field"><label for="s-phone">Phone or WhatsApp</label><input id="s-phone" name="phone" type="tel" autocomplete="tel" required></div>
+        </div>
+        <div class="field"><label for="s-loc">Plant location</label><input id="s-loc" name="location" required></div>
+        <div class="field"><label for="s-sym">What is happening?</label>
+          <select id="s-sym" name="symptom"><option>Less gas than usual</option><option>Flame weak or going out</option><option>Smell</option><option>Foam or crust</option><option>Mixer or pump not working</option><option>Gas leak suspected</option><option>Something else</option></select></div>
+        <div class="field"><label for="s-since">Since when</label><input id="s-since" name="since" placeholder="e.g. 3 days"></div>
+        <div class="field"><label for="s-msg">Describe it</label><textarea id="s-msg" name="message"></textarea></div>
+        <div class="hp" aria-hidden="true"><label>Leave empty<input name="company_website" tabindex="-1" autocomplete="off"></label></div>
+        <button class="btn" type="submit">Send fault report</button>
+        <div class="result" hidden role="status"></div>
+      </form>
+      <p class="hint" style="margin-top:12px">Suspected gas leak: ventilate, no flames or switches, leave the area and call us now.</p>
+    </div>
+  </div>
+
+  <div class="notice" style="margin-top:32px">
+    <strong>Direct contact</strong><br>
+    <a data-email href="#"></a> <a data-phone href="#"></a> <a data-whatsapp href="#" target="_blank" rel="noopener">WhatsApp us</a><br>
+    <span class="muted">Registered office: AIC-BARC, 1st Floor, DAE Con, Anushaktinagar, Mumbai 400094</span>
+  </div>
+</div></section>

@@ -1,0 +1,134 @@
+<!-- Customer portal | Demo of the Wastec plant monitoring portal with sample data. -->
+<section><div class="wrap">
+  <div class="notice" style="margin-bottom:24px"><strong>Demo with sample data.</strong> This shows what customers will see. Readings below are simulated. Live login and real sensor data connect through the Supabase setup in the project's README.</div>
+
+  <div class="pbar">
+    <div><span class="eyebrow">Customer portal</span><h1 style="font-size:1.8rem;margin-top:8px">Plant overview</h1></div>
+    <div class="field" style="min-width:240px"><label for="plant">Plant</label>
+      <select id="plant"><option value="0">Dairy farm, 40 m³ digester (sample)</option><option value="1">Hotel kitchen waste, 12 m³ (sample)</option><option value="2">Poultry unit, 30 m³ (sample)</option></select></div>
+  </div>
+
+  <div class="tabs" role="tablist" aria-label="Portal sections">
+    <button role="tab" id="t-ov" aria-selected="true" aria-controls="p-ov">Overview</button>
+    <button role="tab" id="t-al" aria-selected="false" aria-controls="p-al">Alerts</button>
+    <button role="tab" id="t-sv" aria-selected="false" aria-controls="p-sv">Service</button>
+    <button role="tab" id="t-am" aria-selected="false" aria-controls="p-am">AMC and invoices</button>
+  </div>
+
+  <div id="p-ov" role="tabpanel" aria-labelledby="t-ov">
+    <div class="kpis" id="kpis"></div>
+    <div class="panel">
+      <h3>Last 24 hours</h3>
+      <div class="legend"><span><i style="background:var(--flame)"></i>Gas flow (m³/h, left)</span><span><i style="background:var(--warn)"></i>Digester temperature (°C, right)</span></div>
+      <canvas id="chart" role="img" aria-label="Line chart of gas flow and digester temperature over the last 24 hours"></canvas>
+    </div>
+    <div class="panel"><h3>Today</h3><dl class="out" style="border:0;margin:0" id="today"></dl></div>
+  </div>
+
+  <div id="p-al" role="tabpanel" aria-labelledby="t-al" hidden>
+    <div class="panel"><h3>Alerts</h3><div class="tbl"><table>
+      <thead><tr><th>When</th><th>Reading</th><th>Level</th><th>Suggested action</th></tr></thead><tbody id="alerts"></tbody></table></div></div>
+    <div class="panel"><h3>Alert limits</h3><div class="tbl"><table>
+      <thead><tr><th>Reading</th><th>Normal</th><th>Warn</th><th>Alert</th></tr></thead>
+      <tbody>
+        <tr><td>Digester temperature</td><td class="mono">35–38 °C</td><td class="mono">&lt; 34 or &gt; 40</td><td class="mono">&lt; 30 or &gt; 43</td></tr>
+        <tr><td>Methane</td><td class="mono">55–65 %</td><td class="mono">&lt; 52 %</td><td class="mono">&lt; 48 %</td></tr>
+        <tr><td>Gas pressure</td><td class="mono">10–25 mbar</td><td class="mono">&lt; 8</td><td class="mono">&lt; 4 or &gt; 35</td></tr>
+        <tr><td>H₂S after scrubber</td><td class="mono">&lt; 200 ppm</td><td class="mono">&gt; 300</td><td class="mono">&gt; 500</td></tr>
+        <tr><td>Gas flow vs 7-day average</td><td class="mono">±10 %</td><td class="mono">−20 %</td><td class="mono">−40 %</td></tr>
+      </tbody></table></div></div>
+  </div>
+
+  <div id="p-sv" role="tabpanel" aria-labelledby="t-sv" hidden>
+    <div class="panel"><h3>Service requests</h3><div class="tbl"><table>
+      <thead><tr><th>Ticket</th><th>Opened</th><th>Issue</th><th>Status</th><th>Technician</th></tr></thead><tbody id="tickets"></tbody></table></div>
+      <p style="margin-top:16px"><a class="btn" href="contact.html#service">Report a new fault</a></p></div>
+  </div>
+
+  <div id="p-am" role="tabpanel" aria-labelledby="t-am" hidden>
+    <div class="grid">
+      <div class="panel"><h3>Maintenance contract</h3>
+        <dl class="out" style="border:0;margin:0" id="amc"></dl></div>
+      <div class="panel"><h3>Invoices</h3><div class="tbl"><table>
+        <thead><tr><th>No.</th><th>Date</th><th>Amount</th><th>Status</th></tr></thead><tbody id="inv"></tbody></table></div></div>
+    </div>
+  </div>
+</div></section>
+
+<script data-page>
+(function(){
+  var $ = function(id){ return document.getElementById(id); };
+  var fmt = function(n,d){ return n.toLocaleString("en-IN",{minimumFractionDigits:d||0,maximumFractionDigits:d||0}); };
+
+  // Sample plants. A real deployment replaces this block with a query to the readings table.
+  var P = [
+    {gas:62, t:36.5, ch4:59, p:18, h2s:120, aMain:"Sample AMC, active", alerts:[["2 h ago","Gas flow 22% below 7-day average","warn","Check feeding and slurry level"],["Yesterday","H₂S 310 ppm after scrubber","warn","Inspect scrubber media"]], tk:[["T-1042","12 Nov","Mixer making noise","In progress","Assigned"],["T-1031","29 Oct","Quarterly service","Closed","Done"]]},
+    {gas:21, t:35.2, ch4:57, p:14, h2s:80,  aMain:"Sample AMC, active", alerts:[["3 days ago","Temperature 33.6 °C","warn","Check heating and insulation"]], tk:[["T-1038","8 Nov","Weak flame at burner","Closed","Done"]]},
+    {gas:48, t:37.4, ch4:61, p:21, h2s:150, aMain:"Sample AMC, due soon", alerts:[], tk:[["T-1019","2 Oct","Annual service","Closed","Done"]]}
+  ];
+  var idx = 0, tab = "ov";
+
+  // deterministic pseudo-noise so the demo is stable between reloads
+  function rnd(i,s){ var x = Math.sin(i*12.9898 + s*78.233)*43758.5453; return x - Math.floor(x); }
+  function series(p, s){
+    var g = [], t = [];
+    for (var h = 0; h < 24; h++){
+      var day = 0.75 + 0.25*Math.sin((h-6)/24*2*Math.PI);              // feed-driven daily swing
+      g.push(+(p.gas/24*3.0*day*(0.9 + 0.2*rnd(h,s))).toFixed(2));
+      t.push(+(p.t + 0.6*Math.sin((h-10)/24*2*Math.PI) + (rnd(h,s+7)-0.5)*0.4).toFixed(2));
+    }
+    return {g:g, t:t};
+  }
+
+  function kpis(p){
+    var items = [["Gas today","m³",fmt(p.gas,0),"ok","on track"],["Methane","%",fmt(p.ch4),(p.ch4<52?"warn":"ok"),p.ch4<52?"low":"normal"],
+      ["Temperature","°C",fmt(p.t,1),(p.t<34||p.t>40?"warn":"ok"),p.t<34?"low":"normal"],["Gas pressure","mbar",fmt(p.p),"ok","normal"],
+      ["H₂S after scrubber","ppm",fmt(p.h2s),(p.h2s>300?"warn":"ok"),p.h2s>300?"high":"normal"]];
+    $("kpis").innerHTML = items.map(function(i){ return '<div class="kpi"><small>'+i[0]+'</small><b>'+i[2]+'</b> <small style="display:inline">'+i[1]+'</small><br><span class="pill '+i[3]+'">'+i[4]+'</span></div>'; }).join("");
+    $("today").innerHTML = [["Biogas produced",fmt(p.gas)+" m³"],["Equivalent LPG",fmt(p.gas*0.43,1)+" kg"],["Plant status","Running"],["Last reading","a few seconds ago (simulated)"]]
+      .map(function(r){ return '<div class="row"><dt>'+r[0]+'</dt><dd>'+r[1]+'</dd></div>'; }).join("");
+  }
+
+  function draw(){
+    var c = $("chart"), dpr = window.devicePixelRatio || 1, w = c.clientWidth, h = c.clientHeight;
+    c.width = w*dpr; c.height = h*dpr; var x = c.getContext("2d"); x.scale(dpr,dpr); x.clearRect(0,0,w,h);
+    var cs = getComputedStyle(document.documentElement), col = function(n){ return cs.getPropertyValue(n).trim(); };
+    var s = series(P[idx], idx), padL = 44, padR = 44, padT = 10, padB = 28, iw = w-padL-padR, ih = h-padT-padB;
+    function nice(min,max,n){ var span = (max-min)||1, step = Math.pow(10,Math.floor(Math.log10(span/n))), e = span/n/step; step *= e<1.5?1:e<3?2:e<7?5:10; return {min:Math.floor(min/step)*step, max:Math.ceil(max/step)*step, step:step}; }
+    var gs = nice(0, Math.max.apply(null,s.g), 4), ts = nice(Math.min.apply(null,s.t)-0.5, Math.max.apply(null,s.t)+0.5, 4);
+    var X = function(i){ return padL + iw*i/23; };
+    var YG = function(v){ return padT + ih*(1-(v-gs.min)/(gs.max-gs.min)); }, YT = function(v){ return padT + ih*(1-(v-ts.min)/(ts.max-ts.min)); };
+    x.font = "11px "+getComputedStyle(document.body).fontFamily; x.textBaseline = "middle"; x.lineWidth = 1;
+    for (var v = gs.min; v <= gs.max+1e-9; v += gs.step){ var y = YG(v); x.strokeStyle = col("--line"); x.beginPath(); x.moveTo(padL,y); x.lineTo(w-padR,y); x.stroke(); x.fillStyle = col("--ink-2"); x.textAlign = "right"; x.fillText(fmt(v,gs.step<1?1:0), padL-8, y); }
+    for (var u = ts.min; u <= ts.max+1e-9; u += ts.step){ x.fillStyle = col("--ink-2"); x.textAlign = "left"; x.fillText(fmt(u,ts.step<1?1:0), w-padR+8, YT(u)); }
+    x.textAlign = "center"; x.textBaseline = "top"; x.fillStyle = col("--ink-2");
+    [0,6,12,18,23].forEach(function(i){ x.fillText(("0"+i).slice(-2)+":00", X(i), h-padB+8); });
+    function line(a, Y, color){ x.strokeStyle = color; x.lineWidth = 2; x.beginPath(); a.forEach(function(v,i){ i?x.lineTo(X(i),Y(v)):x.moveTo(X(i),Y(v)); }); x.stroke();
+      x.fillStyle = color; x.beginPath(); x.arc(X(23),Y(a[23]),3.5,0,7); x.fill(); }
+    line(s.t, YT, col("--warn")); line(s.g, YG, col("--flame"));
+  }
+
+  function lists(p){
+    $("alerts").innerHTML = p.alerts.length ? p.alerts.map(function(a){ return '<tr><td>'+a[0]+'</td><td>'+a[1]+'</td><td><span class="pill '+a[2]+'">'+a[2]+'</span></td><td>'+a[3]+'</td></tr>'; }).join("")
+      : '<tr><td colspan="4" class="muted">No alerts in the last 7 days.</td></tr>';
+    $("tickets").innerHTML = p.tk.map(function(t){ return '<tr><td class="mono">'+t[0]+'</td><td>'+t[1]+'</td><td>'+t[2]+'</td><td><span class="pill '+(t[3]==="Closed"?"ok":"warn")+'">'+t[3]+'</span></td><td>'+t[4]+'</td></tr>'; }).join("");
+    $("amc").innerHTML = [["Plan",p.aMain],["Visits per year","4 (sample)"],["Next visit","in 3 weeks (sample)"],["Valid until","31 Mar (sample)"]].map(function(r){ return '<div class="row"><dt>'+r[0]+'</dt><dd>'+r[1]+'</dd></div>'; }).join("");
+    $("inv").innerHTML = [["INV-0007","01 Oct","Sample","Paid"],["INV-0012","01 Jan","Sample","Due"]].map(function(r){ return '<tr><td class="mono">'+r[0]+'</td><td>'+r[1]+'</td><td>'+r[2]+'</td><td><span class="pill '+(r[3]==="Paid"?"ok":"warn")+'">'+r[3]+'</span></td></tr>'; }).join("");
+  }
+
+  function render(){ var p = P[idx]; kpis(p); lists(p); if (tab === "ov") draw(); }
+  $("plant").addEventListener("change", function(e){ idx = +e.target.value; render(); });
+  document.querySelectorAll('[role="tab"]').forEach(function(b){
+    b.addEventListener("click", function(){
+      tab = b.id.slice(2);
+      document.querySelectorAll('[role="tab"]').forEach(function(o){ o.setAttribute("aria-selected", o === b); });
+      ["ov","al","sv","am"].forEach(function(k){ $("p-"+k).hidden = k !== tab; });
+      if (tab === "ov") draw();
+    });
+  });
+  window.addEventListener("resize", function(){ if (tab === "ov") draw(); });
+  var tbtn = document.getElementById("theme-btn"); if (tbtn) tbtn.addEventListener("click", function(){ setTimeout(function(){ if (tab === "ov") draw(); }, 30); });
+  matchMedia("(prefers-color-scheme: dark)").addEventListener("change", function(){ if (tab === "ov") draw(); });
+  render();
+})();
+</script>

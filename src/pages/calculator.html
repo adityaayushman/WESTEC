@@ -1,0 +1,82 @@
+<!-- Biogas calculator | Estimate daily biogas output, LPG saved and plant size from your waste quantity. -->
+<section><div class="wrap">
+  <div class="sec-head"><span class="eyebrow">Calculator</span><h1>How much biogas will your waste make?</h1>
+    <p class="lead">Typical yields for fresh waste. Real output depends on feed quality, temperature and plant design, so treat this as a starting point for a survey.</p></div>
+
+  <div class="calc">
+    <form class="formcard" id="calc-form" onsubmit="return false">
+      <div class="field"><label for="c-waste">Waste type</label>
+        <select id="c-waste"></select></div>
+      <div class="field"><label for="c-kg">Fresh waste per day (kg)</label>
+        <input id="c-kg" type="number" min="0" step="10" value="500" inputmode="numeric"></div>
+      <div class="field"><label for="c-lpg">LPG price (₹ per kg)</label>
+        <input id="c-lpg" type="number" min="0" step="1" inputmode="numeric">
+        <span class="hint">Change this to your current price.</span></div>
+      <div class="field"><label for="c-use">What will you use the gas for?</label>
+        <select id="c-use"><option value="heat">Cooking or heating</option><option value="power">Electricity (genset)</option></select></div>
+      <p class="hint" id="c-assump"></p>
+    </form>
+
+    <div>
+      <div class="out" aria-live="polite">
+        <div class="big"><span class="muted">Estimated biogas per day</span><b><span id="o-gas">0</span> m³</b></div>
+        <dl style="margin:0">
+          <div class="row"><dt>Range (low to high)</dt><dd id="o-range">–</dd></div>
+          <div class="row"><dt>Methane share, typical</dt><dd>55–65 %</dd></div>
+          <div class="row"><dt>LPG replaced per day</dt><dd id="o-lpg">–</dd></div>
+          <div class="row"><dt id="o-vl">Value per month</dt><dd id="o-val">–</dd></div>
+          <div class="row"><dt>Digester volume to discuss</dt><dd id="o-vol">–</dd></div>
+          <div class="row"><dt>Slurry produced per day</dt><dd id="o-slurry">–</dd></div>
+        </dl>
+      </div>
+      <p class="hint" style="margin:12px 0 16px">Indicative only. Digester volume = daily feed plus mixing water, times retention time. A site survey sets the final design.</p>
+      <a class="btn" id="o-cta" href="contact.html">Get a quote for this</a>
+    </div>
+  </div>
+</div></section>
+
+<script data-page>
+(function(){
+  // litres of biogas per kg of fresh waste (low, typical, high), water:feed ratio, retention days
+  var W = [
+    {n:"Cattle dung",            lo:30,  mid:40,  hi:50,  water:1, hrt:40},
+    {n:"Poultry litter",         lo:55,  mid:70,  hi:90,  water:1, hrt:40},
+    {n:"Pig manure",             lo:45,  mid:60,  hi:75,  water:1, hrt:35},
+    {n:"Kitchen or food waste",  lo:70,  mid:100, hi:130, water:1, hrt:25},
+    {n:"Vegetable or fruit waste", lo:45, mid:60, hi:80,  water:1, hrt:25}
+  ];
+  var LPG_PER_M3 = 0.43;   // kg LPG replaced by 1 m3 of biogas (conservative)
+  var KWH_PER_M3 = 1.8;    // electrical kWh per m3 through a typical biogas genset
+  var ELEC_RATE  = 8;      // assumed Rs per kWh of grid power replaced
+  var $ = function(id){ return document.getElementById(id); };
+  var sel = $("c-waste");
+  W.forEach(function(w,i){ var o = document.createElement("option"); o.value = i; o.textContent = w.n; sel.appendChild(o); });
+  $("c-lpg").value = (window.WASTEC && WASTEC.lpgPricePerKg) || 100;
+  var f = function(n, d){ return n.toLocaleString("en-IN", {maximumFractionDigits: d||0}); };
+
+  function run(){
+    var w = W[+sel.value], kg = Math.max(0, +$("c-kg").value || 0), lpg = Math.max(0, +$("c-lpg").value || 0);
+    var gas = kg * w.mid / 1000, lo = kg * w.lo / 1000, hi = kg * w.hi / 1000;
+    $("o-gas").textContent = f(gas, 1);
+    $("o-range").textContent = f(lo,1) + " – " + f(hi,1) + " m³";
+    var slurry = kg * (1 + w.water) / 1000;           // m3/day, approx 1 t = 1 m3
+    $("o-slurry").textContent = f(slurry, 2) + " m³";
+    $("o-vol").textContent = f(slurry * w.hrt, 0) + " m³ (" + w.hrt + "-day retention)";
+    if ($("c-use").value === "heat") {
+      var kgLpg = gas * LPG_PER_M3;
+      $("o-lpg").textContent = f(kgLpg, 1) + " kg";
+      $("o-vl").textContent = "LPG saved per month";
+      $("o-val").textContent = "₹ " + f(kgLpg * lpg * 30);
+    } else {
+      var kwh = gas * KWH_PER_M3;
+      $("o-lpg").textContent = "n/a (power)";
+      $("o-vl").textContent = "Electricity per day";
+      $("o-val").textContent = f(kwh, 0) + " kWh  (≈ ₹ " + f(kwh * ELEC_RATE * 30) + " / month)";
+    }
+    $("c-assump").textContent = "Assumes " + w.mid + " L biogas per kg of " + w.n.toLowerCase() + " (range " + w.lo + "–" + w.hi + "), 1 m³ biogas ≈ " + LPG_PER_M3 + " kg LPG, genset ≈ " + KWH_PER_M3 + " kWh per m³, grid power ₹" + ELEC_RATE + "/kWh.";
+    $("o-cta").href = "contact.html#quote";
+  }
+  ["c-waste","c-kg","c-lpg","c-use"].forEach(function(id){ $(id).addEventListener("input", run); });
+  run();
+})();
+</script>
